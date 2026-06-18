@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ruckus ICX — Migration Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+
+    #log-output {
+      font-family: 'Courier New', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .log-line { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+    .log-INFO    { color: #D1D5DB; }
+    .log-SUCCESS { color: #4ADE80; }
+    .log-WARNING { color: #FCD34D; }
+    .log-ERROR   { color: #F87171; }
+    .log-DEBUG   { color: #6B7280; }
+
+    .dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .dot-pending  { background: #374151; }
+    .dot-running  { background: #3B82F6; animation: pulse-dot 1s ease-in-out infinite; }
+    .dot-success  { background: #22C55E; }
+    .dot-error    { background: #EF4444; }
+    .dot-skipped  { background: #F59E0B; }
+    .dot-warning  { background: #F97316; }
+
+    .badge-pending  { color: #6B7280; }
+    .badge-running  { color: #60A5FA; }
+    .badge-success  { color: #4ADE80; }
+    .badge-error    { color: #F87171; }
+    .badge-skipped  { color: #FBBF24; }
+    .badge-warning  { color: #FB923C; }
+
+    .status-blue   { color: #60A5FA; }
+    .status-green  { color: #4ADE80; }
+    .status-red    { color: #F87171; }
+    .status-yellow { color: #FCD34D; }
+    .status-gray   { color: #9CA3AF; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.3; transform: scale(0.75); }
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden">
+
+  <!-- Header -->
+  <header class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between flex-shrink-0">
+    <div>
+      <h1 class="text-base font-bold text-white tracking-tight">Ruckus ICX — Migration Tool</h1>
+      <p class="text-xs text-gray-500 mt-0.5">SmartZone → Ruckus One</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="sse-dot" class="w-2 h-2 rounded-full bg-gray-600 transition-colors duration-300"></span>
+      <span class="text-xs text-gray-500">Live</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex flex-1 min-h-0">
+
+    <!-- Left panel -->
+    <div class="w-72 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0 overflow-y-auto">
+      <div class="p-5 flex flex-col gap-4 flex-1">
+
+        <!-- Inputs -->
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Switch IP</label>
+            <input id="ip-input" type="text" placeholder="Ex: 192.168.1.1"
+              class="mt-1.5 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm
+                     placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Usuário</label>
+            <input id="user-input" type="text" placeholder="Ex: admin" value="admin"
+              class="mt-1.5 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm
+                     placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Password</label>
+            <input id="pwd-input" type="password" placeholder="Senha do switch"
+              class="mt-1.5 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm
+                     placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Analista</label>
+            <input id="analista-input" type="text" placeholder="Seu usuário MELI"
+              class="mt-1.5 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm
+                     placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Controle de Câmbio</label>
+            <input id="controle-cambio-input" type="text" placeholder="Ex: CC-2026-001"
+              class="mt-1.5 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm
+                     placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+          </div>
+        </div>
+
+        <div class="border-t border-gray-800"></div>
+
+        <!-- Steps -->
+        <div>
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Etapas da Migração</p>
+          <div id="steps-list" class="space-y-1.5"></div>
+        </div>
+
+        <div class="flex-1"></div>
+
+        <!-- Buttons -->
+        <div class="space-y-2">
+          <button id="start-btn" onclick="startMigration()"
+            class="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700
+                   disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed
+                   text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+            ▶&nbsp; INICIAR MIGRAÇÃO
+          </button>
+          <button id="reset-btn" onclick="resetMigration()"
+            class="w-full bg-gray-800 hover:bg-gray-700 active:bg-gray-900
+                   disabled:opacity-40 disabled:cursor-not-allowed
+                   text-gray-400 font-medium rounded-lg px-4 py-2 text-sm transition-colors">
+            ↺&nbsp; LIMPAR / RESET
+          </button>
+        </div>
+
+        <!-- Status geral -->
+        <div id="status-bar" class="text-xs text-center font-medium status-gray pb-1">● Idle</div>
+
+      </div>
+    </div>
+
+    <!-- Right panel — log -->
+    <div class="flex-1 flex flex-col min-w-0 bg-gray-950">
+      <div class="px-5 py-3 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
+        <h2 class="text-sm font-semibold text-gray-300">Log de Execução</h2>
+        <button onclick="clearLog()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+          Limpar log
+        </button>
+      </div>
+      <div id="log-output" class="flex-1 overflow-y-auto p-4 space-y-px"></div>
+    </div>
+
+  </main>
+
+  <!-- Modal: Solicitar nome da venue no Ruckus One -->
+  <div id="venue-name-modal"
+    class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+    <div class="bg-gray-800 border border-blue-600/50 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-blue-400 text-xl">🏢</span>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-white">Criação de Venue — Ruckus One</h2>
+          <p class="text-xs text-gray-400 mt-0.5">Informe o nome que usará ao criar a venue</p>
+        </div>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl p-4 mb-5 space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-gray-400">Device</span>
+          <span id="vn-device" class="font-mono text-blue-300"></span>
+        </div>
+        <div id="vn-site-row" class="flex justify-between hidden">
+          <span class="text-gray-400">Sugestão (Netbox)</span>
+          <span id="vn-site-slug" class="font-mono text-yellow-300 font-semibold"></span>
+        </div>
+      </div>
+
+      <div class="mb-5">
+        <label class="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+          Nome da venue no Ruckus One
+        </label>
+        <input id="venue-name-input" type="text" placeholder="Ex: BRFOR01"
+          class="mt-2 w-full bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2.5 text-sm
+                 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-colors">
+        <p id="venue-name-error" class="text-xs text-red-400 mt-1 hidden">Informe o nome da venue.</p>
+      </div>
+
+      <button onclick="submitVenueName()"
+        class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-colors">
+        ✓ &nbsp;Confirmar e buscar venue
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal: Venue não encontrada no Ruckus One -->
+  <div id="venue-modal"
+    class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+    <div class="bg-gray-800 border border-yellow-600/50 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-yellow-400 text-xl">⏸</span>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-white">Venue não encontrada no Ruckus One</h2>
+          <p class="text-xs text-gray-400 mt-0.5">Pipeline pausado — ação manual necessária</p>
+        </div>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl p-4 mb-5 space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-gray-400">site_slug (Netbox)</span>
+          <span id="venue-slug" class="font-mono text-yellow-300 font-semibold"></span>
+        </div>
+        <div id="venue-site-name-row" class="flex justify-between hidden">
+          <span class="text-gray-400">Nome sugerido (Netbox)</span>
+          <span id="venue-site-name" class="font-mono text-green-300"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-400">Device</span>
+          <span id="venue-device" class="font-mono text-blue-300"></span>
+        </div>
+      </div>
+
+      <p class="text-sm text-gray-400 mb-6 leading-relaxed">
+        Acesse o painel do <strong class="text-white">Ruckus One</strong> e crie a venue
+        com o nome exato do <strong class="text-yellow-300">site_slug</strong> acima.
+        Após criar, clique em continuar.
+      </p>
+
+      <button onclick="confirmVenueCreated()"
+        class="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-colors">
+        ✓ &nbsp;Venue criada — continuar
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal de confirmação de upgrade -->
+  <div id="upgrade-modal"
+    class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+          <span class="text-yellow-400 text-xl">⚠</span>
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-white">Upgrade de Firmware Necessário</h2>
+          <p class="text-xs text-gray-400 mt-0.5">Confirme para prosseguir com a atualização</p>
+        </div>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl p-4 mb-5 space-y-2">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-gray-400">Versão atual</span>
+          <span id="modal-current" class="font-mono font-semibold text-red-400"></span>
+        </div>
+        <div class="border-t border-gray-800"></div>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-gray-400">Versão mínima exigida</span>
+          <span id="modal-minimum" class="font-mono font-semibold text-green-400"></span>
+        </div>
+      </div>
+
+      <p class="text-sm text-gray-400 mb-6 leading-relaxed">
+        O firmware será transferido via TFTP e o switch será reiniciado automaticamente após a conclusão.
+      </p>
+
+      <div class="flex gap-3">
+        <button onclick="confirmUpgrade(true)"
+          class="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl px-4 py-2.5 text-sm transition-colors">
+          ✓ &nbsp;Confirmar Upgrade
+        </button>
+        <button onclick="confirmUpgrade(false)"
+          class="flex-1 bg-gray-700 hover:bg-gray-600 active:bg-gray-800 text-gray-300 font-medium rounded-xl px-4 py-2.5 text-sm transition-colors">
+          ✗ &nbsp;Cancelar
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ── Definição das etapas ──────────────────────────────────────────────────
+    const STEPS = [
+      { id: "ssh_connect",      label: "1. Conectar via SSH" },
+      { id: "firmware_check",   label: "2. Verificar Firmware" },
+      { id: "firmware_upgrade", label: "3. Upgrade de Firmware" },
+      { id: "device_reboot",    label: "4. Reboot do Device" },
+      { id: "ping_wait",        label: "5. Aguardar Retorno (Ping)" },
+      { id: "ssh_reconnect",    label: "6. Reconectar via SSH" },
+      { id: "smartzone_cli",    label: "7. Remover SmartZone (CLI)" },
+      { id: "smartzone_api",    label: "8. SmartZone API (DELETE)" },
+      { id: "ruckus_one_venue", label: "9. Associar ao Ruckus One" },
+      { id: "grid_update",      label: "10. Preparar dados Grid" },
+    ];
+
+    const BADGE_LABELS = {
+      pending: "Aguardando",
+      running: "Executando...",
+      success: "Concluído ✓",
+      error:   "Erro ✗",
+      skipped: "Pulado →",
+      warning: "Atenção ⚠",
+    };
+
+    // ── Inicializa lista de etapas ────────────────────────────────────────────
+    function initSteps() {
+      const list = document.getElementById("steps-list");
+      list.innerHTML = "";
+      STEPS.forEach(({ id, label }) => {
+        const row = document.createElement("div");
+        row.className = "flex items-center gap-2 py-0.5";
+        row.innerHTML = `
+          <span class="dot dot-pending" id="dot-${id}"></span>
+          <span class="text-xs text-gray-400 flex-1 leading-tight">${label}</span>
+          <span class="text-xs badge-pending shrink-0" id="badge-${id}">Aguardando</span>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    // ── Atualiza status visual de uma etapa ───────────────────────────────────
+    function updateStep(stepId, status) {
+      const dot   = document.getElementById(`dot-${stepId}`);
+      const badge = document.getElementById(`badge-${stepId}`);
+      if (dot)   dot.className   = `dot dot-${status}`;
+      if (badge) { badge.className = `text-xs badge-${status} shrink-0`; badge.textContent = BADGE_LABELS[status] || status; }
+    }
+
+    // ── Log ───────────────────────────────────────────────────────────────────
+    const logOutput = document.getElementById("log-output");
+    let autoScroll = true;
+
+    logOutput.addEventListener("scroll", () => {
+      const { scrollTop, scrollHeight, clientHeight } = logOutput;
+      autoScroll = scrollTop + clientHeight >= scrollHeight - 20;
+    });
+
+    function appendLog(level, message, timestamp) {
+      const line = document.createElement("div");
+      line.className = `log-line log-${level}`;
+      line.textContent = `[${timestamp}] ${level.padEnd(8)} ${message}`;
+      logOutput.appendChild(line);
+      if (autoScroll) logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function clearLog() { logOutput.innerHTML = ""; }
+
+    // ── Status bar ────────────────────────────────────────────────────────────
+    function setStatus(text, color) {
+      const bar = document.getElementById("status-bar");
+      bar.className = `text-xs text-center font-medium pb-1 status-${color || "gray"}`;
+      bar.textContent = `● ${text}`;
+    }
+
+    // ── Botões ────────────────────────────────────────────────────────────────
+    function setRunning(isRunning) {
+      document.getElementById("start-btn").disabled = isRunning;
+      document.getElementById("reset-btn").disabled = isRunning;
+    }
+
+    // ── SSE ───────────────────────────────────────────────────────────────────
+    let evtSource = null;
+
+    function connectSSE() {
+      if (evtSource) evtSource.close();
+      evtSource = new EventSource("/stream");
+      const dot = document.getElementById("sse-dot");
+
+      evtSource.onopen  = () => { dot.className = "w-2 h-2 rounded-full bg-green-400 transition-colors duration-300"; };
+      evtSource.onerror = () => { dot.className = "w-2 h-2 rounded-full bg-red-500 transition-colors duration-300"; setTimeout(connectSSE, 3000); };
+      evtSource.onmessage = (e) => {
+        try { handleEvent(JSON.parse(e.data)); }
+        catch (err) { console.error("SSE parse error:", err); }
+      };
+    }
+
+    // ── Roteamento de eventos ─────────────────────────────────────────────────
+    function handleEvent(data) {
+      switch (data.type) {
+        case "state":
+          Object.entries(data.steps || {}).forEach(([id, status]) => updateStep(id, status));
+          setStatus(data.status_text, data.status_color);
+          setRunning(data.running);
+          break;
+        case "step":
+          updateStep(data.step_id, data.status);
+          break;
+        case "log":
+          appendLog(data.level, data.message, data.timestamp);
+          break;
+        case "status":
+          setStatus(data.text, data.color);
+          break;
+        case "upgrade_required":
+          document.getElementById("modal-current").textContent = data.current_version;
+          document.getElementById("modal-minimum").textContent = data.minimum_version;
+          document.getElementById("upgrade-modal").classList.remove("hidden");
+          break;
+
+        case "venue_name_request":
+          document.getElementById("vn-device").textContent = data.device_name;
+          const vnSiteRow = document.getElementById("vn-site-row");
+          if (data.site_slug) {
+            document.getElementById("vn-site-slug").textContent = data.site_slug;
+            vnSiteRow.classList.remove("hidden");
+          } else {
+            vnSiteRow.classList.add("hidden");
+          }
+          document.getElementById("venue-name-input").value = data.site_slug || "";
+          document.getElementById("venue-name-error").classList.add("hidden");
+          document.getElementById("venue-name-modal").classList.remove("hidden");
+          break;
+
+        case "venue_not_found":
+          document.getElementById("venue-slug").textContent   = data.site_slug;
+          document.getElementById("venue-device").textContent = data.device_name;
+          const siteNameRow = document.getElementById("venue-site-name-row");
+          if (data.site_name) {
+            document.getElementById("venue-site-name").textContent = data.site_name;
+            siteNameRow.classList.remove("hidden");
+          } else {
+            siteNameRow.classList.add("hidden");
+          }
+          document.getElementById("venue-modal").classList.remove("hidden");
+          break;
+        case "pipeline_done":
+          setRunning(false);
+          break;
+      }
+    }
+
+    // ── API helpers ───────────────────────────────────────────────────────────
+    async function startMigration() {
+      const ip              = document.getElementById("ip-input").value.trim();
+      const username        = document.getElementById("user-input").value.trim();
+      const password        = document.getElementById("pwd-input").value.trim();
+      const analista        = document.getElementById("analista-input").value.trim();
+      const controle_cambio = document.getElementById("controle-cambio-input").value.trim();
+
+      if (!ip)              { alert("Informe o IP do switch."); return; }
+      if (!username)        { alert("Informe o usuário do switch."); return; }
+      if (!password)        { alert("Informe a senha do switch."); return; }
+      if (!analista)        { alert("Informe o analista responsável."); return; }
+      if (!controle_cambio) { alert("Informe o controle de câmbio."); return; }
+
+      const res  = await fetch("/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip, username, password, analista, controle_cambio }),
+      });
+      const data = await res.json();
+      if (!data.ok) alert(data.error);
+    }
+
+    async function resetMigration() {
+      const res  = await fetch("/reset", { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) alert(data.error);
+    }
+
+    async function confirmUpgrade(confirmed) {
+      document.getElementById("upgrade-modal").classList.add("hidden");
+      await fetch("/confirm-upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed }),
+      });
+    }
+
+    async function submitVenueName() {
+      const name = document.getElementById("venue-name-input").value.trim();
+      if (!name) {
+        document.getElementById("venue-name-error").classList.remove("hidden");
+        return;
+      }
+      document.getElementById("venue-name-error").classList.add("hidden");
+      document.getElementById("venue-name-modal").classList.add("hidden");
+      await fetch("/set-venue-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ venue_name: name }),
+      });
+    }
+
+    async function confirmVenueCreated() {
+      document.getElementById("venue-modal").classList.add("hidden");
+      await fetch("/venue-created", { method: "POST" });
+    }
+
+    // ── Enter para iniciar ────────────────────────────────────────────────────
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !document.getElementById("start-btn").disabled) startMigration();
+    });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    initSteps();
+    connectSSE();
+  </script>
+</body>
+</html>

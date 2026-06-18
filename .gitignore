@@ -1,0 +1,19 @@
+# Secrets — nunca versionar (use config.example.py como template)
+config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# macOS
+.DS_Store
+
+# Repo git separado de terceiros (não faz parte deste projeto)
+ruckusmigration/
