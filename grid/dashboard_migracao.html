@@ -167,7 +167,7 @@
     // ── Grid State (dados persistidos) ────────────────────────────────────────
     async function load() {
       try {
-        const state = await window.GRID.state.get();
+        const { state } = await window.GRID.state.get();
         const rows  = state?.migrations || [];
         render(rows);
         if (state?.last_update) {

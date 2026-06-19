@@ -82,8 +82,10 @@ Ao concluir o pipeline (etapa 10), o próprio pipeline envia o registro ao Grid
 
 Via SDK no HTML (o que o `dashboard_migracao.html` usa):
 ```javascript
-const state = await window.GRID.state.get();   // lê → state.migrations
-window.GRID.state.set(data, ifUpdatedAt)       // escreve (full overwrite)
+const { state } = await window.GRID.state.get();   // lê → state.migrations
+// ⚠️ get() retorna { state, updated_at } — SEMPRE desestruture "state"
+// Passar o retorno direto para acessar .migrations é o bug clássico aqui.
+window.GRID.state.set(data, ifUpdatedAt)            // escreve (full overwrite)
 ```
 
 Via REST (backend Python `core/grid_api.py`):
@@ -111,6 +113,18 @@ x-api-source: office
 > ⚠️ `if_updated_at` é o token de **concorrência otimista** — passe o
 > `updated_at` retornado pelo GET para não sobrescrever alterações concorrentes
 > (passar `""` ignora a checagem).
+
+> 🐛 **Bug corrigido (dashboard em branco):** `window.GRID.state.get()`
+> retorna um wrapper `{ state, updated_at }`, **não** o state diretamente.
+> O HTML anterior fazia `const state = await window.GRID.state.get()` e
+> depois acessava `state.migrations` — que era `undefined` porque estava
+> no nível errado. Correção: desestruturar na atribuição:
+> ```javascript
+> const { state } = await window.GRID.state.get();
+> ```
+> Confirmado: os dados estavam sendo salvos corretamente no state o tempo todo
+> via REST API (`core/grid_api.py`). O problema era exclusivamente na leitura
+> pelo SDK no front-end.
 
 ---
 
